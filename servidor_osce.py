@@ -31,7 +31,7 @@ def obtener_licitaciones():
         ayer = hoy - timedelta(hours=24)
         
         url_osce = (
-            'https://prod6.seace.gob.pe/buscador-publico/contrataciones/api/releases/'
+            'https://prod6.seace.gob.pe/buscador-publico/contrataciones'
             f'?dateFrom={ayer.strftime("%Y-%m-%d")}'
             f'&dateTo={hoy.strftime("%Y-%m-%d")}'
             f'&page_size=50'
