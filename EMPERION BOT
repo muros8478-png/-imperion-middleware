@@ -1,176 +1,107 @@
 """
 🚀 SERVIDOR MIDDLEWARE - A & S IMPERION E.I.R.L.
-Conecta Google Apps Script con OSCE
-Versión 1.0 - 100% Gratis
+Versión Railway - Conexión OSCE
 """
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import urllib.request
-import urllib.parse
-import json
+from flask import Flask, jsonify
+import requests
 import ssl
 from datetime import datetime, timedelta
 
+app = Flask(__name__)
+
 # Configurar SSL
 ssl._create_default_https_context = ssl._create_unverified_context
-ssl._create_default_https_context().set_ciphers('DEFAULT:@SECLEVEL=1')
 
-class ManejadorOSCE(BaseHTTPRequestHandler):
-    
-    def do_GET(self):
-        """Manejar peticiones GET de Apps Script"""
-        
-        if '/licitaciones' in self.path:
-            try:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 📡 Consultando OSCE...")
-                
-                # Consultar API OSCE últimas 24 horas
-                hoy = datetime.now()
-                ayer = hoy - timedelta(hours=24)
-                
-                url_osce = (
-                    'https://prodapp2.seace.gob.pe/seacebus-uiwd-pub/buscadorPublico/buscadorPublico.xhtml'
-                    f'?dateFrom={ayer.strftime("%Y-%m-%d")}'
-                    f'&dateTo={hoy.strftime("%Y-%m-%d")}'
-                    f'&page_size=50'
-                )
-                
-                print(f"   URL: {url_osce}")
-                
-                # Hacer petición
-                req = urllib.request.Request(
-                    url_osce,
-                    headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'application/json'
-                    }
-                )
-                
-                with urllib.request.urlopen(req, timeout=30) as response:
-                    datos = json.loads(response.read().decode('utf-8'))
-                
-                # Procesar resultados
-                resultados = []
-                releases = datos.get('results', datos.get('releases', []))
-                
-                for paquete in releases:
-                    items = paquete.get('releases', [paquete])
-                    for release in items:
-                        try:
-                            tender = release.get('tender', {})
-                            if not tender.get('title'):
-                                continue
-                            
-                            # Extraer entidad
-                            entidad = 'No especificada'
-                            for party in release.get('parties', []):
-                                if 'buyer' in party.get('roles', []):
-                                    entidad = party.get('name', entidad)
-                                    break
-                            
-                            # Extraer región
-                            region = 'NACIONAL'
-                            for party in release.get('parties', []):
-                                if party.get('address', {}).get('region'):
-                                    region = party['address']['region']
-                                    break
-                            
-                            # Extraer monto
-                            monto = 0
-                            valor = tender.get('value', {})
-                            if valor.get('amount'):
-                                monto = float(valor['amount'])
-                            
-                            # Extraer rubro
-                            rubro = ''
-                            items_tender = tender.get('items', [])
-                            if items_tender:
-                                clas = items_tender[0].get('classification', {})
-                                rubro = clas.get('description', '')
-                            
-                            # Extraer fecha
-                            fecha_cierre = tender.get('tenderPeriod', {}).get('endDate', '')
-                            
-                            # Extraer TDR
-                            tdr = (tender.get('description', '') or '')[:300]
-                            
-                            licitacion = {
-                                'titulo': tender.get('title', ''),
-                                'entidad': entidad,
-                                'region': region,
-                                'rubro': rubro,
-                                'monto': monto,
-                                'fechaCierre': fecha_cierre,
-                                'plazo': '',
-                                'tdr': tdr
-                            }
-                            
-                            if licitacion['titulo'] and licitacion['monto'] > 0:
-                                resultados.append(licitacion)
-                                
-                        except Exception as e:
-                            print(f"   ⚠️ Error procesando: {e}")
-                
-                # Enviar respuesta
-                respuesta = {
-                    'exito': True,
-                    'total': len(resultados),
-                    'licitaciones': resultados,
-                    'timestamp': datetime.now().isoformat()
-                }
-                
-                self._responder_json(200, respuesta)
-                print(f"   ✅ {len(resultados)} licitaciones enviadas")
-                
-            except Exception as e:
-                error = {
-                    'exito': False,
-                    'error': str(e)
-                }
-                self._responder_json(500, error)
-                print(f"   ❌ Error: {e}")
-        else:
-            # Ruta raíz - verificar que el servidor funciona
-            self._responder_json(200, {
-                'servidor': 'IMPERION-BOT Middleware',
-                'version': '1.0',
-                'estado': 'activo',
-                'empresa': 'A & S IMPERION E.I.R.L.'
-            })
-    
-    def _responder_json(self, codigo, datos):
-        """Enviar respuesta JSON"""
-        self.send_response(codigo)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(json.dumps(datos, ensure_ascii=False).encode('utf-8'))
-    
-    def log_message(self, format, *args):
-        """Suprimir logs HTTP innecesarios"""
-        pass
+@app.route('/')
+def inicio():
+    return jsonify({
+        'servidor': 'IMPERION-BOT Middleware',
+        'version': '1.0',
+        'estado': 'activo',
+        'empresa': 'A & S IMPERION E.I.R.L.'
+    })
 
-
-def iniciar_servidor():
-    """Iniciar el servidor middleware"""
-    puerto = 8080
-    servidor = HTTPServer(('0.0.0.0', puerto), ManejadorOSCE)
-    
-    print('═' * 55)
-    print('🚀 SERVIDOR MIDDLEWARE - A & S IMPERION E.I.R.L.')
-    print('═' * 55)
-    print(f'✅ Servidor iniciado en: http://localhost:{puerto}')
-    print(f'📡 Endpoint OSCE: http://localhost:{puerto}/licitaciones')
-    print(f'🔍 Verificar: http://localhost:{puerto}/')
-    print('📋 Presiona Ctrl+C para detener')
-    print('═' * 55)
-    
+@app.route('/licitaciones')
+def obtener_licitaciones():
     try:
-        servidor.serve_forever()
-    except KeyboardInterrupt:
-        print('\n🛑 Servidor detenido')
-        servidor.server_close()
-
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 📡 Consultando OSCE...")
+        
+        hoy = datetime.now()
+        ayer = hoy - timedelta(hours=24)
+        
+        url_osce = (
+            'https://contratacionesabiertas.osce.gob.pe/api/releases/'
+            f'?dateFrom={ayer.strftime("%Y-%m-%d")}'
+            f'&dateTo={hoy.strftime("%Y-%m-%d")}'
+            f'&page_size=50'
+        )
+        
+        print(f"   URL: {url_osce}")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json'
+        }
+        
+        respuesta = requests.get(url_osce, headers=headers, timeout=30)
+        datos = respuesta.json()
+        
+        resultados = []
+        releases = datos.get('results', datos.get('releases', []))
+        
+        for paquete in releases:
+            items = paquete.get('releases', [paquete])
+            for release in items:
+                try:
+                    tender = release.get('tender', {})
+                    if not tender.get('title'):
+                        continue
+                    
+                    entidad = 'No especificada'
+                    for party in release.get('parties', []):
+                        if 'buyer' in party.get('roles', []):
+                            entidad = party.get('name', entidad)
+                            break
+                    
+                    region = 'NACIONAL'
+                    for party in release.get('parties', []):
+                        if party.get('address', {}).get('region'):
+                            region = party['address']['region']
+                            break
+                    
+                    monto = 0
+                    valor = tender.get('value', {})
+                    if valor.get('amount'):
+                        monto = float(valor['amount'])
+                    
+                    resultados.append({
+                        'titulo': tender.get('title', ''),
+                        'entidad': entidad,
+                        'region': region,
+                        'rubro': tender.get('items', [{}])[0].get('classification', {}).get('description', ''),
+                        'monto': monto,
+                        'fechaCierre': tender.get('tenderPeriod', {}).get('endDate', ''),
+                        'plazo': '',
+                        'tdr': (tender.get('description', '') or '')[:300]
+                    })
+                except Exception as e:
+                    print(f"   ⚠️ Error: {e}")
+        
+        print(f"   ✅ {len(resultados)} licitaciones")
+        
+        return jsonify({
+            'exito': True,
+            'total': len(resultados),
+            'licitaciones': resultados
+        })
+        
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
+        return jsonify({
+            'exito': False,
+            'error': str(e)
+        })
 
 if __name__ == '__main__':
-    iniciar_servidor()
+    app.run(host='0.0.0.0', port=8080)
